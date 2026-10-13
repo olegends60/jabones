@@ -385,6 +385,20 @@
           </div>
         </div>
 
+        <!-- PRODUCTOS DEL HOGAR: buscador + lista completa opcional (no aparecen como botones de toque
+             rápido para no saturar la pantalla; se administran en la pestaña "Casa"). Va justo debajo
+             de "Modo de Venta" y antes de la calculadora, como lo pidió el usuario. -->
+        <div style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 10px;">
+          <div class="card-title">🧹 Productos del hogar</div>
+          <div class="input-row" style="margin-top: 8px;">
+            <div class="form-group" style="flex: 2;">
+              <input type="text" id="buscar-casa" placeholder="🔍 Buscar producto (ej. escoba, cubeta...)" oninput="renderProductosCasaVenta()">
+            </div>
+            <button type="button" class="btn btn-secondary" id="btn-ver-todos-casa" onclick="toggleVerTodosCasa()">Ver todos ▾</button>
+          </div>
+          <div id="lista-casa-venta" class="cart-list" style="padding-top: 4px;"></div>
+        </div>
+
         <!-- CALCULADORA: para sacar cuentas rápidas mientras se arma la nota. Se abre/cierra solo al
              tocar el título; su estado (abierta o cerrada) no cambia aunque se agreguen productos a la
              nota, se cambie de modo de venta, etc. — se queda como la dejó hasta que la vuelva a tocar. -->
@@ -394,10 +408,15 @@
             <span id="icono-calculadora">▾</span>
           </div>
           <div id="panel-calculadora" style="display: none; margin-top: 8px;">
-            <input type="text" id="calc-pantalla" readonly
-              style="width: 100%; box-sizing: border-box; text-align: right; font-size: 24px; font-weight: 800;
-                     padding: 12px 10px; border-radius: 10px; border: 1px solid var(--border-color);
-                     background: rgba(255,255,255,0.03); color: var(--text-main); margin-bottom: 8px;" value="0">
+            <!-- Mientras se escribe, calc-pantalla muestra la cuenta completa (ej. "20+10") creciendo.
+                 Al tocar "=", esa cuenta se "minimiza" arriba en calc-historial (chiquito, gris) y el
+                 resultado aparece grande abajo — igual que una calculadora normal. -->
+            <div style="width: 100%; box-sizing: border-box; text-align: right; padding: 10px 10px 8px;
+                        border-radius: 10px; border: 1px solid var(--border-color);
+                        background: rgba(255,255,255,0.03); margin-bottom: 8px; overflow-wrap: break-word;">
+              <div id="calc-historial" style="font-size: 13px; font-weight: 600; color: var(--text-muted); min-height: 16px;"></div>
+              <div id="calc-pantalla" style="font-size: 26px; font-weight: 800; color: var(--text-main); line-height: 1.2;">0</div>
+            </div>
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
               <button type="button" class="btn btn-secondary" onclick="calcTocar('AC')">AC</button>
               <button type="button" class="btn btn-secondary" onclick="calcTocar('⌫')">⌫</button>
@@ -473,19 +492,6 @@
           <label>🛍️ OTROS PRODUCTOS</label>
           <div id="grid-otros" class="quick-grid"></div>
         </div>
-      </div>
-
-      <!-- PRODUCTOS DEL HOGAR: buscador + lista completa opcional (no aparecen como botones de toque
-           rápido para no saturar la pantalla; se administran en la pestaña "Casa") -->
-      <div class="card">
-        <div class="card-title">🧹 Productos del hogar</div>
-        <div class="input-row">
-          <div class="form-group" style="flex: 2;">
-            <input type="text" id="buscar-casa" placeholder="🔍 Buscar producto (ej. escoba, cubeta...)" oninput="renderProductosCasaVenta()">
-          </div>
-          <button type="button" class="btn btn-secondary" id="btn-ver-todos-casa" onclick="toggleVerTodosCasa()">Ver todos ▾</button>
-        </div>
-        <div id="lista-casa-venta" class="cart-list" style="padding-top: 4px;"></div>
       </div>
 
       <!-- HISTORIAL DE HOY -->
@@ -811,10 +817,10 @@
     // capturado) aunque se agreguen productos a la nota o se cambie de modo de venta — solo cambia
     // si el usuario toca el título para abrir/cerrar, o los botones de la calculadora en sí.
     let calculadoraAbierta = false;
-    let calcValorActual = '0';
-    let calcValorPrevio = null;
-    let calcOperador = null;
-    let calcReiniciarEntrada = false;
+    let calcExpresion = '';         // la cuenta completa tal cual se va escribiendo, ej. "20+10"
+    let calcMostrandoResultado = false; // true justo después de tocar "=", hasta que se escriba algo nuevo
+    let calcTextoResultado = '0';   // texto grande: la cuenta mientras se escribe, o el resultado tras "="
+    let calcTextoHistorial = '';    // texto chico arriba: la cuenta que se "minimiza" al tocar "="
 
     document.addEventListener('DOMContentLoaded', () => {
       verificarReinicioDiario();
@@ -935,99 +941,135 @@
     }
 
     function calcRenderizar() {
+      const historial = document.getElementById('calc-historial');
       const pantalla = document.getElementById('calc-pantalla');
-      if (pantalla) pantalla.value = calcValorActual;
+      // Mientras se escribe, se ve la cuenta COMPLETA en grande (ej. "20+10", creciendo tecla a
+      // tecla). Al tocar "=", esa cuenta se "minimiza" arriba (chiquita) y el resultado pasa a
+      // mostrarse grande abajo — así nunca desaparece lo que ya se escribió.
+      if (historial) historial.innerText = calcMostrandoResultado ? calcTextoHistorial : '';
+      if (pantalla) pantalla.innerText = calcMostrandoResultado ? calcTextoResultado : (calcExpresion || '0');
     }
 
     // Redondea a 8 decimales para evitar basura de punto flotante (ej. 0.1 + 0.2) sin limitar
     // de más los resultados legítimos con decimales.
-    function calcFormatearResultado(num) {
-      if (!isFinite(num)) return 'Error';
+    function calcFormatearNumero(num) {
       const redondeado = Math.round(num * 1e8) / 1e8;
       return String(redondeado);
     }
 
-    function calcAplicarOperacion(a, b, operador) {
-      switch (operador) {
-        case '+': return a + b;
-        case '−': return a - b;
-        case '×': return a * b;
-        case '÷': return b === 0 ? NaN : a / b;
-        default: return b;
+    // Devuelve el "segmento" que se está escribiendo ahora mismo: lo que hay después del último
+    // operador en la expresión (o toda la expresión si todavía no hay ningún operador).
+    function calcSegmentoActual() {
+      const partes = calcExpresion.split(/([+−×÷])/);
+      return partes[partes.length - 1];
+    }
+
+    // Evalúa una expresión como "20+10×2" respetando el orden de operaciones (× y ÷ antes que
+    // + y −), usando solo los símbolos que las propias teclas escriben — nunca eval()/Function().
+    function calcEvaluarExpresion(expr) {
+      const tokens = expr.match(/\d+\.?\d*|[+−×÷]/g);
+      if (!tokens || tokens.length % 2 === 0) return NaN; // debe empezar y terminar en número
+      const pasoUno = [parseFloat(tokens[0])];
+      for (let i = 1; i < tokens.length; i += 2) {
+        const operador = tokens[i];
+        const numero = parseFloat(tokens[i + 1]);
+        if (operador === '×' || operador === '÷') {
+          const anterior = pasoUno.pop();
+          pasoUno.push(operador === '×' ? anterior * numero : (numero === 0 ? NaN : anterior / numero));
+        } else {
+          pasoUno.push(operador, numero);
+        }
       }
+      let resultado = pasoUno[0];
+      for (let i = 1; i < pasoUno.length; i += 2) {
+        resultado = pasoUno[i] === '+' ? resultado + pasoUno[i + 1] : resultado - pasoUno[i + 1];
+      }
+      return resultado;
     }
 
     function calcTocar(tecla) {
       if (tecla === 'AC') {
-        calcValorActual = '0';
-        calcValorPrevio = null;
-        calcOperador = null;
-        calcReiniciarEntrada = false;
+        calcExpresion = '';
+        calcMostrandoResultado = false;
+        calcTextoResultado = '0';
+        calcTextoHistorial = '';
         calcRenderizar();
         return;
       }
 
       if (tecla === '⌫') {
-        if (calcValorActual === 'Error' || calcReiniciarEntrada) {
-          calcValorActual = '0';
-          calcReiniciarEntrada = false;
+        // Después de un resultado, borrar no tiene mucho sentido (no hay nada "escrito" que
+        // corregir) — se comporta como si tocaran AC para evitar confusión.
+        if (calcMostrandoResultado) {
+          calcExpresion = '';
+          calcMostrandoResultado = false;
+          calcTextoResultado = '0';
+          calcTextoHistorial = '';
         } else {
-          calcValorActual = calcValorActual.length > 1 ? calcValorActual.slice(0, -1) : '0';
+          calcExpresion = calcExpresion.slice(0, -1);
         }
         calcRenderizar();
         return;
       }
 
       if (tecla === '%') {
-        calcValorActual = calcFormatearResultado((parseFloat(calcValorActual) || 0) / 100);
-        calcReiniciarEntrada = false;
+        // Convierte el número que se está escribiendo ahora mismo (o el resultado anterior) en
+        // su versión "entre 100", conservando lo que ya se había escrito antes de él.
+        const base = calcMostrandoResultado ? calcTextoResultado : calcExpresion;
+        const segmento = calcMostrandoResultado ? calcTextoResultado : calcSegmentoActual();
+        if (segmento === '') return;
+        const valorPorcentaje = calcFormatearNumero((parseFloat(segmento) || 0) / 100);
+        calcExpresion = base.slice(0, base.length - segmento.length) + valorPorcentaje;
+        calcMostrandoResultado = false;
         calcRenderizar();
         return;
       }
 
       if (tecla === '.') {
-        if (calcValorActual === 'Error' || calcReiniciarEntrada) {
-          calcValorActual = '0.';
-          calcReiniciarEntrada = false;
-        } else if (!calcValorActual.includes('.')) {
-          calcValorActual += '.';
+        if (calcMostrandoResultado) {
+          calcExpresion = '0.';
+          calcMostrandoResultado = false;
+        } else if (!calcSegmentoActual().includes('.')) {
+          calcExpresion += calcSegmentoActual() === '' ? '0.' : '.';
         }
         calcRenderizar();
         return;
       }
 
       if (tecla === '+' || tecla === '−' || tecla === '×' || tecla === '÷') {
-        if (calcValorActual === 'Error') return;
-        if (calcOperador !== null && !calcReiniciarEntrada) {
-          const resultado = calcAplicarOperacion(calcValorPrevio, parseFloat(calcValorActual), calcOperador);
-          calcValorActual = calcFormatearResultado(resultado);
-          calcValorPrevio = isFinite(resultado) ? resultado : null;
+        if (calcMostrandoResultado) {
+          // Seguir operando a partir del resultado anterior (ej. tras "20+10=30", tocar "+"
+          // continúa como "30+").
+          calcExpresion = calcTextoResultado + tecla;
+          calcMostrandoResultado = false;
+        } else if (calcExpresion === '') {
+          return; // nada que operar todavía
+        } else if (/[+−×÷]$/.test(calcExpresion)) {
+          calcExpresion = calcExpresion.slice(0, -1) + tecla; // corrige el operador en vez de apilarlo
         } else {
-          calcValorPrevio = parseFloat(calcValorActual) || 0;
+          calcExpresion += tecla;
         }
-        calcOperador = tecla;
-        calcReiniciarEntrada = true;
         calcRenderizar();
         return;
       }
 
       if (tecla === '=') {
-        if (calcValorActual === 'Error' || calcOperador === null || calcValorPrevio === null) return;
-        const resultado = calcAplicarOperacion(calcValorPrevio, parseFloat(calcValorActual), calcOperador);
-        calcValorActual = calcFormatearResultado(resultado);
-        calcValorPrevio = null;
-        calcOperador = null;
-        calcReiniciarEntrada = true;
+        if (calcExpresion === '' || /[+−×÷]$/.test(calcExpresion)) return; // expresión incompleta
+        const resultado = calcEvaluarExpresion(calcExpresion);
+        calcTextoHistorial = calcExpresion;
+        calcTextoResultado = isFinite(resultado) ? calcFormatearNumero(resultado) : 'Error';
+        calcMostrandoResultado = true;
         calcRenderizar();
         return;
       }
 
       // Dígitos 0-9
-      if (calcValorActual === 'Error' || calcReiniciarEntrada) {
-        calcValorActual = tecla;
-        calcReiniciarEntrada = false;
+      if (calcMostrandoResultado) {
+        calcExpresion = tecla;
+        calcMostrandoResultado = false;
       } else {
-        calcValorActual = calcValorActual === '0' ? tecla : calcValorActual + tecla;
+        const segmento = calcSegmentoActual();
+        calcExpresion = segmento === '0' ? calcExpresion.slice(0, -1) + tecla : calcExpresion + tecla;
       }
       calcRenderizar();
     }
