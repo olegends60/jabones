@@ -485,7 +485,7 @@
             </div>
             <div class="form-group">
               <label>Ganancia real por litro ($):</label>
-              <input type="number" step="1" id="prod-ganancia" placeholder="0" required>
+              <input type="number" step="0.01" id="prod-ganancia" placeholder="0" required>
             </div>
           </div>
           <div style="display: flex; gap: 6px; margin-top: 4px;">
@@ -543,7 +543,7 @@
             </div>
             <div class="form-group">
               <label>Ganancia por combo ($):</label>
-              <input type="number" step="1" id="promo-ganancia" placeholder="0">
+              <input type="number" step="0.01" id="promo-ganancia" placeholder="0">
             </div>
           </div>
           <div style="display: flex; gap: 6px; margin-top: 4px;">
@@ -576,7 +576,7 @@
             </div>
             <div class="form-group">
               <label>Ganancia por venta ($):</label>
-              <input type="number" step="1" id="otro-ganancia" placeholder="0">
+              <input type="number" step="0.01" id="otro-ganancia" placeholder="0">
             </div>
           </div>
           <div style="display: flex; gap: 6px; margin-top: 4px;">
@@ -623,7 +623,7 @@
             </div>
             <div class="form-group">
               <label>Ganancia por venta ($):</label>
-              <input type="number" step="1" id="casa-ganancia" placeholder="0">
+              <input type="number" step="0.01" id="casa-ganancia" placeholder="0">
             </div>
           </div>
           <div style="display: flex; gap: 6px; margin-top: 4px;">
@@ -936,6 +936,13 @@
       renderCarrito();
     }
 
+    // Las GANANCIAS sí admiten centavos (ej. 34.69), a diferencia de los precios de venta que se
+    // quedan en números cerrados. Esto solo redondea a 2 decimales para evitar errores de punto
+    // flotante (ej. 7.1 + 0.2 = 7.300000000000001); nunca fuerza el valor a un número entero.
+    function redondearGanancia(valor) {
+      return Math.round((parseFloat(valor) || 0) * 100) / 100;
+    }
+
     // Redondea hacia arriba al litro COMPLETO según el dinero ofrecido (ej. $50 de un producto de
     // $18/L son 2.78L -> se redondea a 3L, cobrando lo que valen esos 3L completos: $54).
     // Se resta un margen mínimo antes de Math.ceil para que montos que caen EXACTOS en un litro
@@ -986,7 +993,9 @@
       const { litros: litrosFinal, subtotal: subtotalFinal } = calcularLitrosRedondeados(monto, precioReal);
       if (litrosFinal <= 0) return alert(`Con $${monto} no alcanza ni 1 litro de este producto.`);
 
-      const gananciaTotal = Math.ceil(gananciaReal * litrosFinal);
+      // No se usa Math.ceil aquí (a diferencia del subtotal en pesos): la ganancia por litro puede
+      // tener centavos (ej. $7.69/L), y forzarla hacia arriba inflaría la ganancia real del día.
+      const gananciaTotal = redondearGanancia(gananciaReal * litrosFinal);
 
       agregarAlCarrito(prod.nombre, subtotalFinal, gananciaTotal, `${litrosFinal} L`, litrosFinal, prod.id);
       document.getElementById('monto-dinero').value = '';
@@ -1008,7 +1017,8 @@
       const gananciaReal = prod.ganancia || 0;
       const subtotalCalculado = litros * precioReal;
       const subtotalRedondeado = Math.ceil(subtotalCalculado);
-      const gananciaCalculada = Math.ceil(litros * gananciaReal);
+      // Igual que en la venta por dinero: la ganancia conserva centavos, no se redondea hacia arriba.
+      const gananciaCalculada = redondearGanancia(litros * gananciaReal);
 
       agregarAlCarrito(prod.nombre, subtotalRedondeado, gananciaCalculada, `${litros} L`, litros, prod.id);
       document.getElementById('cant-litros').value = '';
@@ -1276,7 +1286,7 @@
       const gananciaVal = document.getElementById('prod-ganancia').value;
 
       const precio = precioVal !== '' ? Math.round(parseFloat(precioVal)) : '';
-      const ganancia = gananciaVal !== '' ? Math.round(parseFloat(gananciaVal)) : '';
+      const ganancia = gananciaVal !== '' ? redondearGanancia(gananciaVal) : '';
 
       if (id) {
         const index = productos.findIndex(p => p.id == id);
@@ -1400,7 +1410,7 @@
       const precio = precioVal !== '' ? Math.round(parseFloat(precioVal)) : '';
       // La ganancia es opcional: si se deja en blanco, vale 0 (válido, no bloquea nada).
       const gananciaVal = document.getElementById('promo-ganancia').value;
-      const ganancia = gananciaVal !== '' ? Math.round(parseFloat(gananciaVal)) : 0;
+      const ganancia = gananciaVal !== '' ? redondearGanancia(gananciaVal) : 0;
 
       if (id) {
         const idx = promos.findIndex(p => p.id == id);
@@ -1474,7 +1484,7 @@
       const precio = precioVal !== '' ? Math.round(parseFloat(precioVal)) : '';
       // La ganancia es opcional: si se deja en blanco, vale 0 (válido, no bloquea nada).
       const gananciaVal = document.getElementById('otro-ganancia').value;
-      const ganancia = gananciaVal !== '' ? Math.round(parseFloat(gananciaVal)) : 0;
+      const ganancia = gananciaVal !== '' ? redondearGanancia(gananciaVal) : 0;
 
       if (id) {
         const idx = otros.findIndex(o => o.id == id);
@@ -1551,7 +1561,7 @@
       const precio = precioVal !== '' ? Math.round(parseFloat(precioVal)) : '';
       // La ganancia es opcional: si se deja en blanco, vale 0 (válido, no bloquea nada).
       const gananciaVal = document.getElementById('casa-ganancia').value;
-      const ganancia = gananciaVal !== '' ? Math.round(parseFloat(gananciaVal)) : 0;
+      const ganancia = gananciaVal !== '' ? redondearGanancia(gananciaVal) : 0;
 
       if (id) {
         const idx = productosCasa.findIndex(p => p.id == id);
