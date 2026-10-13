@@ -385,6 +385,47 @@
           </div>
         </div>
 
+        <!-- CALCULADORA: para sacar cuentas rápidas mientras se arma la nota. Se abre/cierra solo al
+             tocar el título; su estado (abierta o cerrada) no cambia aunque se agreguen productos a la
+             nota, se cambie de modo de venta, etc. — se queda como la dejó hasta que la vuelva a tocar. -->
+        <div style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 10px;">
+          <div class="card-title" style="cursor: pointer;" onclick="toggleCalculadora()">
+            <span>🧮 Calculadora</span>
+            <span id="icono-calculadora">▾</span>
+          </div>
+          <div id="panel-calculadora" style="display: none; margin-top: 8px;">
+            <input type="text" id="calc-pantalla" readonly
+              style="width: 100%; box-sizing: border-box; text-align: right; font-size: 24px; font-weight: 800;
+                     padding: 12px 10px; border-radius: 10px; border: 1px solid var(--border-color);
+                     background: rgba(255,255,255,0.03); color: var(--text-main); margin-bottom: 8px;" value="0">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('AC')">AC</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('⌫')">⌫</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('%')">%</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('÷')">÷</button>
+
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('7')">7</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('8')">8</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('9')">9</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('×')">×</button>
+
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('4')">4</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('5')">5</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('6')">6</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('−')">−</button>
+
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('1')">1</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('2')">2</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('3')">3</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('+')">+</button>
+
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('0')" style="grid-column: span 2;">0</button>
+              <button type="button" class="btn btn-secondary" onclick="calcTocar('.')">.</button>
+              <button type="button" class="btn" onclick="calcTocar('=')">=</button>
+            </div>
+          </div>
+        </div>
+
         <!-- NOTA DE VENTA Y CARRITO -->
         <div id="wrapper-nota-arriba" style="display: none; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--primary); padding: 12px; border-radius: 14px;">
           <div class="card-title">
@@ -615,6 +656,17 @@
           <div class="form-group">
             <label>Categoría:</label>
             <select id="casa-categoria" required></select>
+            <button type="button" id="btn-gestionar-categorias" class="btn btn-secondary" style="margin-top: 6px; font-size: 11px; padding: 6px 10px; align-self: flex-start;" onclick="toggleGestionCategoriasCasa()">⚙️ Agregar / editar / eliminar categorías ▾</button>
+            <!-- Panel de categorías: oculto hasta que se toque el botón de arriba. Permite agregar una
+                 categoría nueva, renombrar una existente (se actualiza en automático en los productos que
+                 ya la usaban) y eliminarla (solo si ningún producto la está usando, para no dejar huérfanos). -->
+            <div id="panel-categorias-casa" style="display: none; margin-top: 8px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--border-color);">
+              <div id="lista-categorias-casa"></div>
+              <div class="input-row" style="margin-top: 6px;">
+                <input type="text" id="nueva-categoria-casa" placeholder="Nombre de la nueva categoría" style="flex: 2;">
+                <button type="button" class="btn" style="font-size: 12px; padding: 8px 10px;" onclick="agregarCategoriaCasa()">+ Agregar</button>
+              </div>
+            </div>
           </div>
           <div class="input-row">
             <div class="form-group">
@@ -635,6 +687,9 @@
 
       <div class="card" style="overflow-x: auto;">
         <div class="card-title">Lista de Productos del Hogar</div>
+        <div class="form-group" style="margin-bottom: 8px;">
+          <input type="text" id="buscar-casa-admin" placeholder="🔍 Buscar producto para editarlo..." oninput="renderCasaAdmin()">
+        </div>
         <table class="dark-table">
           <thead>
             <tr>
@@ -727,8 +782,10 @@
       { id: 106, nombre: 'Bolsa Dove', precio: 70 }
     ];
 
-    // Categorías fijas para "Productos del hogar" (escobas, cubetas, químicos, etc.)
-    const CATEGORIAS_CASA = [
+    // Categorías de "Productos del hogar" (escobas, cubetas, químicos, etc.). Son el punto de partida,
+    // pero el usuario puede agregar, renombrar o eliminar categorías desde la pestaña "Casa" — por eso
+    // se guardan en localStorage como "categoriasCasa" (mutable) en vez de quedar fijas en el código.
+    const CATEGORIAS_CASA_INICIALES = [
       'Escobas y Jaladores',
       'Recogedores y Limpieza de Pisos',
       'Cubetas, Cestas y Botes',
@@ -742,11 +799,22 @@
     let promos = JSON.parse(localStorage.getItem('pos_promos')) || [];
     let otros = JSON.parse(localStorage.getItem('pos_otros')) || otrosBase;
     let productosCasa = JSON.parse(localStorage.getItem('pos_productos_casa')) || [];
+    let categoriasCasa = JSON.parse(localStorage.getItem('pos_categorias_casa')) || [...CATEGORIAS_CASA_INICIALES];
 
     let cuentas = JSON.parse(localStorage.getItem('pos_cuentas')) || [];
     let archivoSemana = JSON.parse(localStorage.getItem('pos_archivo_semana')) || [];
     let carrito = [];
     let casaExpandido = false; // si la lista completa de "Productos del hogar" está desplegada en Caja
+    let categoriasCasaExpandido = false; // si el panel de gestionar categorías está desplegado
+
+    // Estado de la calculadora de Caja: se queda tal cual (abierta/cerrada, con lo que llevaba
+    // capturado) aunque se agreguen productos a la nota o se cambie de modo de venta — solo cambia
+    // si el usuario toca el título para abrir/cerrar, o los botones de la calculadora en sí.
+    let calculadoraAbierta = false;
+    let calcValorActual = '0';
+    let calcValorPrevio = null;
+    let calcOperador = null;
+    let calcReiniciarEntrada = false;
 
     document.addEventListener('DOMContentLoaded', () => {
       verificarReinicioDiario();
@@ -855,6 +923,113 @@
         document.getElementById('wrap-cobro-dinero').style.display = 'none';
         document.getElementById('wrap-cobro-litros').style.display = 'flex';
       }
+    }
+
+    // --- CALCULADORA de Caja (para sacar cuentas rápidas, no afecta la nota de venta en nada) ---
+    function toggleCalculadora() {
+      calculadoraAbierta = !calculadoraAbierta;
+      const panel = document.getElementById('panel-calculadora');
+      const icono = document.getElementById('icono-calculadora');
+      if (panel) panel.style.display = calculadoraAbierta ? 'block' : 'none';
+      if (icono) icono.innerText = calculadoraAbierta ? '▴' : '▾';
+    }
+
+    function calcRenderizar() {
+      const pantalla = document.getElementById('calc-pantalla');
+      if (pantalla) pantalla.value = calcValorActual;
+    }
+
+    // Redondea a 8 decimales para evitar basura de punto flotante (ej. 0.1 + 0.2) sin limitar
+    // de más los resultados legítimos con decimales.
+    function calcFormatearResultado(num) {
+      if (!isFinite(num)) return 'Error';
+      const redondeado = Math.round(num * 1e8) / 1e8;
+      return String(redondeado);
+    }
+
+    function calcAplicarOperacion(a, b, operador) {
+      switch (operador) {
+        case '+': return a + b;
+        case '−': return a - b;
+        case '×': return a * b;
+        case '÷': return b === 0 ? NaN : a / b;
+        default: return b;
+      }
+    }
+
+    function calcTocar(tecla) {
+      if (tecla === 'AC') {
+        calcValorActual = '0';
+        calcValorPrevio = null;
+        calcOperador = null;
+        calcReiniciarEntrada = false;
+        calcRenderizar();
+        return;
+      }
+
+      if (tecla === '⌫') {
+        if (calcValorActual === 'Error' || calcReiniciarEntrada) {
+          calcValorActual = '0';
+          calcReiniciarEntrada = false;
+        } else {
+          calcValorActual = calcValorActual.length > 1 ? calcValorActual.slice(0, -1) : '0';
+        }
+        calcRenderizar();
+        return;
+      }
+
+      if (tecla === '%') {
+        calcValorActual = calcFormatearResultado((parseFloat(calcValorActual) || 0) / 100);
+        calcReiniciarEntrada = false;
+        calcRenderizar();
+        return;
+      }
+
+      if (tecla === '.') {
+        if (calcValorActual === 'Error' || calcReiniciarEntrada) {
+          calcValorActual = '0.';
+          calcReiniciarEntrada = false;
+        } else if (!calcValorActual.includes('.')) {
+          calcValorActual += '.';
+        }
+        calcRenderizar();
+        return;
+      }
+
+      if (tecla === '+' || tecla === '−' || tecla === '×' || tecla === '÷') {
+        if (calcValorActual === 'Error') return;
+        if (calcOperador !== null && !calcReiniciarEntrada) {
+          const resultado = calcAplicarOperacion(calcValorPrevio, parseFloat(calcValorActual), calcOperador);
+          calcValorActual = calcFormatearResultado(resultado);
+          calcValorPrevio = isFinite(resultado) ? resultado : null;
+        } else {
+          calcValorPrevio = parseFloat(calcValorActual) || 0;
+        }
+        calcOperador = tecla;
+        calcReiniciarEntrada = true;
+        calcRenderizar();
+        return;
+      }
+
+      if (tecla === '=') {
+        if (calcValorActual === 'Error' || calcOperador === null || calcValorPrevio === null) return;
+        const resultado = calcAplicarOperacion(calcValorPrevio, parseFloat(calcValorActual), calcOperador);
+        calcValorActual = calcFormatearResultado(resultado);
+        calcValorPrevio = null;
+        calcOperador = null;
+        calcReiniciarEntrada = true;
+        calcRenderizar();
+        return;
+      }
+
+      // Dígitos 0-9
+      if (calcValorActual === 'Error' || calcReiniciarEntrada) {
+        calcValorActual = tecla;
+        calcReiniciarEntrada = false;
+      } else {
+        calcValorActual = calcValorActual === '0' ? tecla : calcValorActual + tecla;
+      }
+      calcRenderizar();
     }
 
     function verificarReinicioDiario() {
@@ -1549,7 +1724,81 @@
     // PRODUCTOS DEL HOGAR (escobas, cubetas, químicos, etc.) — administración en la pestaña "Casa".
     function poblarSelectCategoriasCasa() {
       const sel = document.getElementById('casa-categoria');
-      sel.innerHTML = CATEGORIAS_CASA.map(c => `<option value="${c}">${c}</option>`).join('');
+      const valorActual = sel.value;
+      sel.innerHTML = categoriasCasa.map(c => `<option value="${c}">${c}</option>`).join('');
+      // Conserva la categoría que estaba seleccionada si todavía existe (ej. al agregar otra categoría
+      // nueva no se pierde lo que el usuario ya había elegido).
+      if (valorActual && categoriasCasa.includes(valorActual)) sel.value = valorActual;
+    }
+
+    // --- Gestionar categorías (agregar / renombrar / eliminar), desde el mismo formulario de Casa ---
+    function toggleGestionCategoriasCasa() {
+      categoriasCasaExpandido = !categoriasCasaExpandido;
+      const panel = document.getElementById('panel-categorias-casa');
+      const btn = document.getElementById('btn-gestionar-categorias');
+      if (panel) panel.style.display = categoriasCasaExpandido ? 'block' : 'none';
+      if (btn) btn.innerText = categoriasCasaExpandido ? 'Ocultar categorías ▴' : '⚙️ Agregar / editar / eliminar categorías ▾';
+      if (categoriasCasaExpandido) renderListaCategoriasCasa();
+    }
+
+    function renderListaCategoriasCasa() {
+      const cont = document.getElementById('lista-categorias-casa');
+      if (!cont) return;
+      if (categoriasCasa.length === 0) {
+        cont.innerHTML = `<p style="font-size: 11px; color: var(--text-muted);">No hay categorías. Agrega una abajo.</p>`;
+        return;
+      }
+      cont.innerHTML = categoriasCasa.map((c, idx) => `
+        <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
+          <input type="text" value="${c}" onchange="renombrarCategoriaCasa(${idx}, this.value)" style="flex: 1; padding: 7px; font-size: 12px;">
+          <button type="button" class="btn-icon" title="Eliminar categoría" onclick="eliminarCategoriaCasa(${idx})">🗑️</button>
+        </div>
+      `).join('');
+    }
+
+    function agregarCategoriaCasa() {
+      const input = document.getElementById('nueva-categoria-casa');
+      const nombre = (input.value || '').trim();
+      if (!nombre) return alert('Escribe un nombre para la nueva categoría.');
+      if (categoriasCasa.some(c => c.toLowerCase() === nombre.toLowerCase())) return alert('Ya existe una categoría con ese nombre.');
+      categoriasCasa.push(nombre);
+      localStorage.setItem('pos_categorias_casa', JSON.stringify(categoriasCasa));
+      input.value = '';
+      poblarSelectCategoriasCasa();
+      renderListaCategoriasCasa();
+    }
+
+    function renombrarCategoriaCasa(indice, nuevoNombreRaw) {
+      const anterior = categoriasCasa[indice];
+      const nuevoNombre = (nuevoNombreRaw || '').trim();
+      if (!nuevoNombre || nuevoNombre === anterior) { renderListaCategoriasCasa(); return; }
+      if (categoriasCasa.some((c, i) => i !== indice && c.toLowerCase() === nuevoNombre.toLowerCase())) {
+        alert('Ya existe una categoría con ese nombre.');
+        renderListaCategoriasCasa();
+        return;
+      }
+      categoriasCasa[indice] = nuevoNombre;
+      // Los productos que ya tenían la categoría anterior se actualizan al nuevo nombre, para que no
+      // se queden "huérfanos" apuntando a una categoría que ya no existe.
+      productosCasa.forEach(p => { if (p.categoria === anterior) p.categoria = nuevoNombre; });
+      localStorage.setItem('pos_categorias_casa', JSON.stringify(categoriasCasa));
+      localStorage.setItem('pos_productos_casa', JSON.stringify(productosCasa));
+      poblarSelectCategoriasCasa();
+      renderListaCategoriasCasa();
+      renderCasaAdmin();
+      renderProductosCasaVenta();
+    }
+
+    function eliminarCategoriaCasa(indice) {
+      const cat = categoriasCasa[indice];
+      if (productosCasa.some(p => p.categoria === cat)) {
+        return alert(`No se puede eliminar "${cat}" porque todavía hay productos con esa categoría. Cámbiales la categoría primero (editando cada producto) y luego elimínala.`);
+      }
+      if (categoriasCasa.length <= 1) return alert('Debe quedar al menos una categoría.');
+      categoriasCasa.splice(indice, 1);
+      localStorage.setItem('pos_categorias_casa', JSON.stringify(categoriasCasa));
+      poblarSelectCategoriasCasa();
+      renderListaCategoriasCasa();
     }
 
     function guardarProductoCasa(e) {
@@ -1581,7 +1830,7 @@
       if (!p) return;
       document.getElementById('casa-id').value = p.id;
       document.getElementById('casa-nombre').value = p.nombre;
-      document.getElementById('casa-categoria').value = p.categoria || CATEGORIAS_CASA[0];
+      document.getElementById('casa-categoria').value = p.categoria || categoriasCasa[0];
       document.getElementById('casa-precio').value = p.precio !== undefined ? p.precio : '';
       document.getElementById('casa-ganancia').value = (p.ganancia !== undefined && p.ganancia !== null) ? p.ganancia : 0;
       document.getElementById('casa-form-title').innerText = "Editar Producto del Hogar";
@@ -1592,7 +1841,7 @@
     function cancelarEdicionProductoCasa() {
       document.getElementById('casa-id').value = '';
       document.getElementById('casa-nombre').value = '';
-      document.getElementById('casa-categoria').value = CATEGORIAS_CASA[0];
+      document.getElementById('casa-categoria').value = categoriasCasa[0];
       document.getElementById('casa-precio').value = '';
       document.getElementById('casa-ganancia').value = '';
       document.getElementById('casa-form-title').innerText = "Agregar / Editar Producto del Hogar";
@@ -1607,7 +1856,14 @@
         tb.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:12px;">Todavía no agregas productos del hogar.</td></tr>`;
         return;
       }
-      productosCasa.forEach(p => {
+      const buscarEl = document.getElementById('buscar-casa-admin');
+      const buscar = buscarEl ? (buscarEl.value || '').trim().toLowerCase() : '';
+      const lista = buscar ? productosCasa.filter(p => p.nombre.toLowerCase().includes(buscar)) : productosCasa;
+      if (lista.length === 0) {
+        tb.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:12px;">No se encontró ningún producto con ese nombre.</td></tr>`;
+        return;
+      }
+      lista.forEach(p => {
         tb.innerHTML += `
           <tr>
             <td><b>${p.nombre}</b></td>
@@ -1698,6 +1954,14 @@
       const subtotal = (prod.precio || 0) * cantidadFinal;
       const ganancia = (prod.ganancia || 0) * cantidadFinal;
       agregarAlCarrito(prod.nombre, subtotal, ganancia, `${cantidadFinal} pza${cantidadFinal > 1 ? 's' : ''}`, 0, prod.id, 'casa', cantidadFinal);
+
+      // Al agregarlo a la nota, se limpia el buscador para que sea más fácil buscar el siguiente
+      // producto sin tener que borrar lo que ya se había escrito.
+      const buscarEl = document.getElementById('buscar-casa');
+      if (buscarEl && buscarEl.value) {
+        buscarEl.value = '';
+        renderProductosCasaVenta();
+      }
     }
 
     // Tocar el nombre del producto: agrega 1 de inmediato (como los botones de toque rápido de líquidos).
